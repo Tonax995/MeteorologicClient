@@ -6,6 +6,7 @@ import org.json.JSONObject;
 
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 
 public class ControladorUDP {
@@ -21,27 +22,47 @@ public class ControladorUDP {
     private void configurarListeners() {
         vista.setConectarListener(e -> {
             String ip = vista.getIP();
-            int puerto = vista.getPuerto();
-            iniciarClienteUDP(ip, puerto);
+            int puertoServidor = vista.getPuerto();
+            iniciarClienteUDP(ip, puertoServidor);
         });
     }
 
-    public void iniciarClienteUDP(String ip, int puerto) {
+    public void iniciarClienteUDP(String ip, int puertoServidor) {
         new Thread(() -> {
-            try (DatagramSocket socket = new DatagramSocket(null)) {
-                socket.bind(new InetSocketAddress(puerto));
+            DatagramSocket socket = null;
+            try {
+                // Crear el socket UDP para enviar la solicitud
+                socket = new DatagramSocket();
+                int puertoCliente = socket.getLocalPort(); // Obtener el puerto en el que se está enviando la solicitud
+
+                // Enviar solicitud inicial al servidor para registrarse
+                String mensajeSolicitud = "SOLICITUD_REGISTRO";
+                byte[] bufferSolicitud = mensajeSolicitud.getBytes();
+                DatagramPacket solicitudPacket = new DatagramPacket(bufferSolicitud, bufferSolicitud.length, InetAddress.getByName(ip), puertoServidor);
+                socket.send(solicitudPacket);
+                System.out.println("Solicitud de registro enviada al servidor desde el puerto: " + puertoCliente);
+
+                // Cerrar el socket para reenlazar en el mismo puerto
+                socket.close();
+                socket = new DatagramSocket(puertoCliente); // Reutilizar el puerto obtenido para escuchar los datos
+
                 byte[] buffer = new byte[1024];
+
+                System.out.println("Cliente escuchando datos meteorológicos en el puerto: " + puertoCliente);
 
                 while (true) {
                     DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                     socket.receive(packet);
-
                     String receivedData = new String(packet.getData(), 0, packet.getLength());
                     procesarJSON(receivedData);
                     mostrarDatosEnVista();
                 }
             } catch (Exception e) {
                 vista.mostrarDatos("Error en el cliente UDP: " + e.getMessage(), "");
+            } finally {
+                if (socket != null && !socket.isClosed()) {
+                    socket.close();
+                }
             }
         }).start();
     }
